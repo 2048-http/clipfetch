@@ -36,4 +36,4 @@ Users can view account information, parsing history, and favorites in the applic
 
 ## Contact
 
-Questions and data-rights requests may be sent to `support@xiaofi.cn`.
+Questions and data-rights requests may be sent to `2280884763@qq.com`.
