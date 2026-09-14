@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="qstudio.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>

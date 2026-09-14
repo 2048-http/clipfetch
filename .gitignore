@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+
+# Server-side source and credentials are managed separately.
+api/
+
+# Rust/Tauri build outputs
+src-tauri/target/
+
+# Installer build outputs
+src-tauri/target/release/bundle/
+
+# Local browser/runtime state
+**/.browser_data/
+**/__pycache__/
+*.pyc
+
+# Visual Studio local state
+.vs/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

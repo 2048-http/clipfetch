@@ -1,0 +1,47 @@
+name: Build Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress --yes
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
+        shell: powershell
+        run: npm run build:installer
+
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipfetch-windows-unsigned
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/clipfetch.exe
+            src-tauri/target/release/bundle/inno/ClipFetch_*_x64_Setup.exe
