@@ -8,7 +8,7 @@ import { API_BASE_URL, loginWithPassword, normalizeAvatarUrl, registerWithVerifi
 import { getAccountProfile } from './lib/accountApi'
 import { deleteParseRecord, getParseRecord, getParseRecords } from './lib/parseRecordsApi'
 import { addFavorite, checkFavoriteIds, getFavorites, removeFavorite } from './lib/favoritesApi'
-import { extractShareUrl, parseVideoLink } from './lib/videoParseApi'
+import { extractShareUrl, getParseEngines, parseVideoLink } from './lib/videoParseApi'
 import { LAST_PAGE_STORAGE_KEY, formatDownloadTitle, readSettings, resetSettings, writeSettings } from './lib/settings'
 import {
   AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardPaste, Clock3, Copy,
@@ -571,6 +571,12 @@ function App() {
   const [history, setHistory] = useState([])
   const [notice, setNotice] = useState(null)
   const [isParsing, setIsParsing] = useState(false)
+  const [parseEngine, setParseEngine] = useState('auto')
+  const [parseEngines, setParseEngines] = useState([])
+  const [parseEnginesLoading, setParseEnginesLoading] = useState(Boolean(user))
+  const [parseEnginesError, setParseEnginesError] = useState('')
+  const [parseEnginesRefreshKey, setParseEnginesRefreshKey] = useState(0)
+  const [engineDialogOpen, setEngineDialogOpen] = useState(false)
   const [resultAction, setResultAction] = useState(null)
   const [favoriteIds, setFavoriteIds] = useState([])
   const [favoriteItems, setFavoriteItems] = useState([])
@@ -601,6 +607,7 @@ function App() {
   const lastClipboardLinkRef = useRef('')
 
   const selectedPlatform = useMemo(() => detectPlatform(url), [url])
+  const activeParseEngine = parseEngines.find((engine) => engine.key === parseEngine)
   const favoriteCheckIds = useMemo(() => [...new Set([
     ...history.filter((item) => item.isRemote !== false).map((item) => Number(item.id)),
     result?.isRemote !== false ? Number(result?.id) : 0,
@@ -609,6 +616,11 @@ function App() {
 
   const updateSettings = (patch) => setSettings((current) => ({ ...current, ...patch }))
   const restoreDefaultSettings = () => setSettings(resetSettings())
+  const retryParseEngines = () => {
+    setParseEnginesLoading(true)
+    setParseEnginesError('')
+    setParseEnginesRefreshKey((key) => key + 1)
+  }
 
   const loadAccountProfile = async () => {
     accountProfileControllerRef.current?.abort()
@@ -667,9 +679,9 @@ function App() {
     setIsParsing(true)
     setResult(null)
     setResultAction(null)
-    setNotice({ type: 'loading', text: `正在通过多线路解析${detectPlatform(sourceUrl) === '自动识别平台' ? '分享内容' : detectPlatform(sourceUrl)}…` })
+    setNotice({ type: 'loading', text: `正在通过${activeParseEngine?.name || '智能路由'}解析${detectPlatform(sourceUrl) === '自动识别平台' ? '分享内容' : detectPlatform(sourceUrl)}…` })
     try {
-      const item = await parseVideoLink(user.id, sourceUrl, { signal: controller.signal })
+      const item = await parseVideoLink(user.id, sourceUrl, { signal: controller.signal, engine: parseEngine })
       setResult(item)
       setHistory((items) => [item, ...items.filter((record) => record.sourceUrl !== item.sourceUrl)].slice(0, RECORDS_PAGE_SIZE))
       if (!history.some((record) => record.sourceUrl === item.sourceUrl)) setRecordsTotal((total) => total + 1)
@@ -782,6 +794,10 @@ function App() {
     setFavoritesPage(1)
     setFavoritesLoading(true)
     setFavoritesError('')
+    setParseEngine('auto')
+    setParseEngines([])
+    setParseEnginesLoading(true)
+    setParseEnginesError('')
     setUser(nextUser)
   }
 
@@ -807,6 +823,11 @@ function App() {
     setFavoritesLoading(false)
     setFavoritePendingKeys([])
     setFavoriteNotice(null)
+    setParseEngine('auto')
+    setParseEngines([])
+    setParseEnginesLoading(false)
+    setParseEnginesError('')
+    setEngineDialogOpen(false)
     setActive('home')
     detailRequestId.current += 1
     setRecordDetail(null)
@@ -1034,6 +1055,21 @@ function App() {
     if (!user?.id) return undefined
 
     const controller = new AbortController()
+    getParseEngines(user.id, { signal: controller.signal }).then((engines) => {
+      setParseEngines(engines)
+      setParseEngine((current) => current === 'auto' || engines.some((engine) => engine.key === current && engine.accessible) ? current : 'auto')
+    }).catch((error) => {
+      if (error?.name !== 'AbortError') setParseEnginesError(error instanceof Error ? error.message : '获取接口引擎失败')
+    }).finally(() => {
+      if (!controller.signal.aborted) setParseEnginesLoading(false)
+    })
+    return () => controller.abort()
+  }, [user?.id, parseEnginesRefreshKey])
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+
+    const controller = new AbortController()
 
     getParseRecords(user.id, {
       page: recordsPage,
@@ -1139,6 +1175,15 @@ function App() {
   }, [favoriteNotice])
 
   useEffect(() => {
+    if (!engineDialogOpen) return undefined
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setEngineDialogOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [engineDialogOpen])
+
+  useEffect(() => {
     if (!logoutConfirmOpen) return undefined
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') setLogoutConfirmOpen(false)
@@ -1208,7 +1253,7 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div><h1>{active === 'home' ? '视频解析' : active === 'history' ? '解析记录' : active === 'record' ? '记录详情' : active === 'favorites' ? '我的收藏' : '应用设置'}</h1><p>{active === 'home' ? '从分享链接提取清晰、无水印的视频' : active === 'history' ? '查看当前账号最近解析完成的内容' : active === 'record' ? '观看并保存这条记录中的媒体内容' : active === 'favorites' ? '集中查看你保存的视频' : '设置下载与应用行为'}</p></div>
-          <div className="topbar-actions"><div className="engine-status"><span /><div><strong>解析服务可用</strong><small>云端多线路引擎</small></div></div><button className="account-chip" type="button" aria-label="查看账号全部信息" title="查看账号全部信息" onClick={openAccountProfile}><UserAvatar user={user} /><span className="account-chip-copy"><strong>{user.name}</strong><small>{user.email || `UID ${user.uid}`}</small></span><ChevronRight className="account-chip-arrow" size={15} /></button><button className="topbar-logout" type="button" aria-label="退出登录" title="退出登录" onClick={() => setLogoutConfirmOpen(true)}><LogOut size={17} /></button></div>
+          <div className="topbar-actions"><button className={`engine-status${parseEnginesError ? ' is-error' : ''}`} type="button" aria-haspopup="dialog" aria-expanded={engineDialogOpen} title={parseEnginesError || '点击切换解析接口引擎'} onClick={() => { setEngineDialogOpen(true); if (parseEnginesError) retryParseEngines() }}><span /><div><strong>{parseEnginesError ? '引擎列表加载失败' : '解析服务可用'}</strong><small>{parseEnginesLoading ? '正在读取接口引擎' : activeParseEngine ? `${activeParseEngine.name} · ${activeParseEngine.description}` : '智能路由 · 自动匹配'}</small></div><ChevronRight className="engine-status-chevron" size={14} /></button><button className="account-chip" type="button" aria-label="查看账号全部信息" title="查看账号全部信息" onClick={openAccountProfile}><UserAvatar user={user} /><span className="account-chip-copy"><strong>{user.name}</strong><small>{user.email || `UID ${user.uid}`}</small></span><ChevronRight className="account-chip-arrow" size={15} /></button><button className="topbar-logout" type="button" aria-label="退出登录" title="退出登录" onClick={() => setLogoutConfirmOpen(true)}><LogOut size={17} /></button></div>
         </header>
 
         {active === 'home' && (
@@ -1253,6 +1298,7 @@ function App() {
       </main>
       {favoriteNotice && <div className={`favorite-toast is-${favoriteNotice.type}`} role={favoriteNotice.type === 'error' ? 'alert' : 'status'}>{favoriteNotice.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}<span>{favoriteNotice.text}</span></div>}
       {accountProfileOpen && <AccountProfileModal profile={accountProfile} loading={accountProfileLoading} error={accountProfileError} onClose={closeAccountProfile} onRetry={loadAccountProfile} />}
+      {engineDialogOpen && <div className="confirm-backdrop engine-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEngineDialogOpen(false) }}><section className="confirm-dialog engine-dialog" role="dialog" aria-modal="true" aria-labelledby="engine-dialog-title" aria-describedby="engine-dialog-description"><div className="engine-dialog-header"><span className="engine-dialog-icon"><Zap size={21} /></span><div><h2 id="engine-dialog-title">选择接口引擎</h2><p id="engine-dialog-description">接口状态由云端实时返回，智能路由会自动匹配平台专线。</p></div></div><div className="engine-dialog-list" role="radiogroup" aria-label="解析接口引擎"><button className={parseEngine === 'auto' ? 'is-selected' : ''} type="button" role="radio" aria-checked={parseEngine === 'auto'} onClick={() => { setParseEngine('auto'); setEngineDialogOpen(false) }}><span><Sparkles size={17} /></span><div><strong>智能路由</strong><small>自动匹配最佳接口与平台专线</small></div><em>推荐</em>{parseEngine === 'auto' && <Check size={16} />}</button>{parseEnginesLoading && !parseEngines.length && <div className="engine-dialog-state"><span className="spinner dark" />正在获取接口引擎…</div>}{parseEnginesError && !parseEngines.length && <div className="engine-dialog-state is-error"><AlertCircle size={17} /><span>{parseEnginesError}</span><button type="button" onClick={retryParseEngines}>重试</button></div>}{parseEngines.map((engine) => <button className={parseEngine === engine.key ? 'is-selected' : ''} key={engine.key} type="button" role="radio" aria-checked={parseEngine === engine.key} disabled={!engine.accessible} title={!engine.accessible ? engine.ban_reason || (engine.vip_only ? '仅会员可用' : '接口已停用') : engine.description} onClick={() => { setParseEngine(engine.key); setEngineDialogOpen(false) }}><span><Zap size={17} /></span><div><strong>{engine.name}</strong><small>{engine.description}</small></div>{engine.vip_only && <em>VIP</em>}{!engine.accessible && <em>{engine.banned ? '受限' : '停用'}</em>}{parseEngine === engine.key && <Check size={16} />}</button>)}</div><div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus onClick={() => setEngineDialogOpen(false)}>取消</button></div></section></div>}
       {exitConfirmDialog}
       {logoutConfirmOpen && <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLogoutConfirmOpen(false) }}><section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title" aria-describedby="logout-dialog-description"><span className="confirm-dialog-icon"><LogOut size={22} /></span><div className="confirm-dialog-copy"><h2 id="logout-dialog-title">确认退出登录？</h2><p id="logout-dialog-description">退出后将结束当前会话，下次使用需要重新输入账号和密码。</p></div><div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus onClick={() => setLogoutConfirmOpen(false)}>取消</button><button className="confirm-danger" type="button" onClick={logout}><LogOut size={15} />确认退出</button></div></section></div>}
       {deleteTarget && <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDeleteDialog() }}><section className="confirm-dialog delete-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description"><span className="confirm-dialog-icon is-delete"><Trash2 size={22} /></span><div className="confirm-dialog-copy"><h2 id="delete-dialog-title">删除这条解析记录？</h2><p id="delete-dialog-description">“{deleteTarget.title}”将从解析记录中移除，此操作无法撤销。</p></div>{deleteError && <div className="confirm-error" role="alert"><AlertCircle size={14} />{deleteError}</div>}<div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus disabled={deleteLoading} onClick={closeDeleteDialog}>取消</button><button className="confirm-danger" type="button" disabled={deleteLoading} onClick={confirmDeleteRecord}>{deleteLoading ? <><span className="spinner" />正在删除</> : <><Trash2 size={15} />确认删除</>}</button></div></section></div>}

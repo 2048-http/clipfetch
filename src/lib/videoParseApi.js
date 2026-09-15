@@ -1,6 +1,13 @@
 import { API_BASE_URL } from './authApi'
 
 const PARSE_TIMEOUT = 180_000
+const PARSE_ENGINE_ENDPOINTS = {
+  v1: 'parse_video.php',
+  v2: 'parse_video_v2.php',
+  crawler: 'parse_video_crawler.php',
+  qsy: 'parse_qsy.php',
+  cyapi: 'parse_video_cyapi.php',
+}
 
 export class VideoParseApiError extends Error {
   constructor(message, details = {}) {
@@ -97,22 +104,41 @@ function normalizeResult(data, sourceUrl) {
   }
 }
 
-function endpointForUrl(sourceUrl) {
+function endpointForUrl(sourceUrl, engine) {
+  if (engine && engine !== 'auto') return PARSE_ENGINE_ENDPOINTS[engine] || PARSE_ENGINE_ENDPOINTS.v1
   let host
   try {
     host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, '')
   } catch {
-    return 'parse_video.php'
+    return PARSE_ENGINE_ENDPOINTS.v1
   }
   if (host === 'x.com' || host.endsWith('.x.com') || host === 'twitter.com' || host.endsWith('.twitter.com') || host.endsWith('fxtwitter.com') || host.endsWith('vxtwitter.com')) return 'parse_x.php'
   if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'parse_instagram.php'
   if (host === 'threads.net' || host.endsWith('.threads.net') || host === 'threads.com' || host.endsWith('.threads.com')) return 'parse_threads.php'
   if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be') return 'parse_youtube.php'
   if (host === 'facebook.com' || host.endsWith('.facebook.com') || host === 'fb.watch') return 'parse_facebook.php'
-  return 'parse_video.php'
+  return PARSE_ENGINE_ENDPOINTS.v1
 }
 
-export async function parseVideoLink(userId, value, { signal } = {}) {
+export async function getParseEngines(userId, { signal } = {}) {
+  const response = await fetch(`${API_BASE_URL}/get_parse_apis.php?user_id=${encodeURIComponent(userId)}`, { signal })
+  const payload = await response.json()
+  if (!response.ok || payload?.code !== 200 || !Array.isArray(payload.data)) {
+    throw new VideoParseApiError(payload?.msg || '获取接口引擎失败')
+  }
+  return payload.data.filter((engine) => Object.hasOwn(PARSE_ENGINE_ENDPOINTS, engine?.key)).map((engine) => ({
+    key: engine.key,
+    name: String(engine.name || engine.key),
+    description: String(engine.description || ''),
+    enabled: engine.enabled === true,
+    vip_only: engine.vip_only === true,
+    banned: engine.banned === true,
+    ban_reason: String(engine.ban_reason || ''),
+    accessible: engine.accessible === true,
+  }))
+}
+
+export async function parseVideoLink(userId, value, { signal, engine = 'auto' } = {}) {
   const numericUserId = Number(userId)
   const sourceUrl = extractShareUrl(value)
   if (!Number.isInteger(numericUserId) || numericUserId <= 0) {
@@ -132,7 +158,7 @@ export async function parseVideoLink(userId, value, { signal } = {}) {
   const timeout = window.setTimeout(() => controller.abort(), PARSE_TIMEOUT)
 
   try {
-    const response = await fetch(`${API_BASE_URL}/${endpointForUrl(sourceUrl)}`, {
+    const response = await fetch(`${API_BASE_URL}/${endpointForUrl(sourceUrl, engine)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: numericUserId, url: sourceUrl }),
