@@ -16,7 +16,7 @@ dist-ssr
 !.env.example
 
 # Server-side source and credentials are managed separately.
-api/
+Q-api/
 
 # Rust/Tauri build outputs
 src-tauri/target/

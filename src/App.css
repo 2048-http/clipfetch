@@ -77,6 +77,7 @@ button { color: inherit; }
 
 /* Confirmation dialog */
 .confirm-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(16, 25, 40, .38); backdrop-filter: blur(3px); animation: confirm-fade-in .16s ease-out; }
+.exit-confirm-backdrop { z-index: 300; }
 .confirm-dialog { width: min(390px, calc(100vw - 48px)); padding: 23px; border: 1px solid rgba(255,255,255,.7); border-radius: 15px; background: #fff; box-shadow: 0 24px 70px rgba(20,34,53,.22); animation: confirm-scale-in .18s ease-out; }
 .confirm-dialog-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; color: #d54a57; background: #fff0f1; }
 .confirm-dialog-copy { margin-top: 15px; }.confirm-dialog-copy h2 { margin: 0; color: var(--ink-strong); font-size: 17px; font-weight: 700; letter-spacing: -.25px; }.confirm-dialog-copy p { margin: 7px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }

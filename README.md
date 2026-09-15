@@ -17,7 +17,7 @@ npm run dev
 
 浏览器访问终端输出的本地地址即可预览。浏览器模式使用演示数据；Tauri 桌面模式会调用本机 `yt-dlp` 执行真实解析与下载。
 
-登录已连接 `login_api.php`。默认接口根地址为 `https://xiaofi.cn/api`，如需切换测试环境，可复制 `.env.example` 为 `.env.local` 并修改 `VITE_API_BASE_URL`。
+登录已连接 `login_api.php`。默认接口根地址为 `https://xiaofi.cn/Q-api`，如需切换测试环境，可复制 `.env.example` 为 `.env.local` 并修改 `VITE_API_BASE_URL`。
 
 真实解析前请确保 `yt-dlp` 已加入系统 PATH；高清视频合并建议同时安装 FFmpeg。
 

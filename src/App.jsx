@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { siBilibili, siKuaishou, siTiktok, siXiaohongshu } from 'simple-icons'
 import 'altcha/i18n/zh-cn'
 import 'altcha'
@@ -555,6 +556,7 @@ function AuthScreen({ onAuthenticated }) {
 function App() {
   const [user, setUser] = useState(readStoredUser)
   const [settings, setSettings] = useState(readSettings)
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [accountProfileOpen, setAccountProfileOpen] = useState(false)
   const [accountProfile, setAccountProfile] = useState(null)
@@ -1007,6 +1009,28 @@ function App() {
   }
 
   useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return undefined
+    const unlisten = getCurrentWindow().onCloseRequested((event) => {
+      event.preventDefault()
+      setExitConfirmOpen(true)
+    })
+    return () => { unlisten.then((stopListening) => stopListening()) }
+  }, [])
+
+  useEffect(() => {
+    if (!exitConfirmOpen) return undefined
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        setExitConfirmOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [exitConfirmOpen])
+
+  useEffect(() => {
     if (!user?.id) return undefined
 
     const controller = new AbortController()
@@ -1149,7 +1173,9 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [deleteTarget, deleteLoading])
 
-  if (!user) return <AuthScreen onAuthenticated={handleAuthenticated} />
+  const exitConfirmDialog = exitConfirmOpen && <div className="confirm-backdrop exit-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExitConfirmOpen(false) }}><section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-dialog-title" aria-describedby="exit-dialog-description"><span className="confirm-dialog-icon"><LogOut size={22} /></span><div className="confirm-dialog-copy"><h2 id="exit-dialog-title">确认退出应用？</h2><p id="exit-dialog-description">退出后当前任务将停止，确定要关闭 ClipFetch 吗？</p></div><div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus onClick={() => setExitConfirmOpen(false)}>取消</button><button className="confirm-danger" type="button" onClick={() => getCurrentWindow().destroy()}><LogOut size={15} />确认退出</button></div></section></div>
+
+  if (!user) return <><AuthScreen onAuthenticated={handleAuthenticated} />{exitConfirmDialog}</>
 
   return (
     <div className={`app-shell ${settings.reduceMotion ? 'reduce-motion' : ''}`}>
@@ -1227,6 +1253,7 @@ function App() {
       </main>
       {favoriteNotice && <div className={`favorite-toast is-${favoriteNotice.type}`} role={favoriteNotice.type === 'error' ? 'alert' : 'status'}>{favoriteNotice.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}<span>{favoriteNotice.text}</span></div>}
       {accountProfileOpen && <AccountProfileModal profile={accountProfile} loading={accountProfileLoading} error={accountProfileError} onClose={closeAccountProfile} onRetry={loadAccountProfile} />}
+      {exitConfirmDialog}
       {logoutConfirmOpen && <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLogoutConfirmOpen(false) }}><section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title" aria-describedby="logout-dialog-description"><span className="confirm-dialog-icon"><LogOut size={22} /></span><div className="confirm-dialog-copy"><h2 id="logout-dialog-title">确认退出登录？</h2><p id="logout-dialog-description">退出后将结束当前会话，下次使用需要重新输入账号和密码。</p></div><div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus onClick={() => setLogoutConfirmOpen(false)}>取消</button><button className="confirm-danger" type="button" onClick={logout}><LogOut size={15} />确认退出</button></div></section></div>}
       {deleteTarget && <div className="confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDeleteDialog() }}><section className="confirm-dialog delete-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description"><span className="confirm-dialog-icon is-delete"><Trash2 size={22} /></span><div className="confirm-dialog-copy"><h2 id="delete-dialog-title">删除这条解析记录？</h2><p id="delete-dialog-description">“{deleteTarget.title}”将从解析记录中移除，此操作无法撤销。</p></div>{deleteError && <div className="confirm-error" role="alert"><AlertCircle size={14} />{deleteError}</div>}<div className="confirm-dialog-actions"><button className="confirm-cancel" type="button" autoFocus disabled={deleteLoading} onClick={closeDeleteDialog}>取消</button><button className="confirm-danger" type="button" disabled={deleteLoading} onClick={confirmDeleteRecord}>{deleteLoading ? <><span className="spinner" />正在删除</> : <><Trash2 size={15} />确认删除</>}</button></div></section></div>}
     </div>
