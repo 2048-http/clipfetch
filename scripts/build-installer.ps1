@@ -95,7 +95,7 @@ try {
   Pop-Location
 }
 
-$outputPath = Join-Path $projectRoot 'src-tauri\target\release\bundle\inno\ClipFetch_0.1.0_x64_Setup.exe'
+$outputPath = Join-Path $projectRoot 'src-tauri\target\release\bundle\inno\ClipFetch_0.1.1_x64_Setup.exe'
 if (-not (Test-Path -LiteralPath $outputPath)) {
   throw "Installer output was not found: $outputPath"
 }

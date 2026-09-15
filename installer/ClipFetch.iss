@@ -1,5 +1,5 @@
 #define MyAppName "ClipFetch"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "QStudio"
 #define MyAppExeName "clipfetch.exe"
 #define ProjectRoot SourcePath + "\.."
